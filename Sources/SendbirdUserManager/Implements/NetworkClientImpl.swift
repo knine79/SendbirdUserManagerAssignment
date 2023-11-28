@@ -19,14 +19,16 @@ public enum SBNetworkError: Error {
 
 public struct SBApiError: Decodable {
     let error: Bool
-    let message: String
     let code: Int
+    let message: String
 }
 
 final class SBNetworkClientImpl: SBNetworkClient {
     
     var applicationId: String?
     var apiToken: String?
+    
+    var apiRequestQueue = ApiRequestQueue()
     
     func request<R>(request: R, completionHandler: @escaping (Result<R.Response, Error>) -> Void) where R : Request {
         
@@ -40,7 +42,7 @@ final class SBNetworkClientImpl: SBNetworkClient {
             return
         }
         
-        URLSession.shared.dataTask(with: urlRequest) { data, response, error in
+        let task = URLSession.shared.dataTask(with: urlRequest) { data, response, error in
             if let error = error {
                 completionHandler(.failure(error))
                 return
@@ -68,6 +70,8 @@ final class SBNetworkClientImpl: SBNetworkClient {
             }
             
             completionHandler(.success(decoded))
-        }.resume()
+        }
+        
+        apiRequestQueue.enqueue(task)
     }
 }
