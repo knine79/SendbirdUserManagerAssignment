@@ -18,11 +18,31 @@ struct GetUserRequest: Request, RequestProperties {
     var bodyParams: Encodable? { nil }
 }
 
+struct GetUsersRequest: Request, RequestProperties {
+    typealias Response = [SBUser]
+
+    var method: SBApiRequestMethod { .get }
+    var endpoint: String { "/users" }
+    var queryParams: Encodable?
+    var bodyParams: Encodable? { nil }
+}
+
 struct CreateUserRequest: Request, RequestProperties {
     typealias Response = SBUser
     
     var method: SBApiRequestMethod { .post }
     var endpoint: String { "/users" }
+    var queryParams: Encodable? { nil }
+    var bodyParams: Encodable?
+}
+
+struct UpdateUserRequest: Request, RequestProperties {
+    typealias Response = SBUser
+    
+    let userId: String
+    
+    var method: SBApiRequestMethod { .put }
+    var endpoint: String { "/users\(userId)" }
     var queryParams: Encodable? { nil }
     var bodyParams: Encodable?
 }
