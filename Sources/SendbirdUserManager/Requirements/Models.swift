@@ -13,6 +13,12 @@ import Foundation
 ///   - nickname: 해당 user의 nickname
 ///   - profileURL: 해당 user의 profile로 사용될 image url
 public struct UserCreationParams {
+    public init(userId: String, nickname: String, profileURL: String?) {
+        self.userId = userId
+        self.nickname = nickname
+        self.profileURL = profileURL
+    }
+    
     public let userId: String
     public let nickname: String
     public let profileURL: String?
@@ -24,6 +30,12 @@ public struct UserCreationParams {
 ///   - nickname: 새로운 nickname
 ///   - profileURL: 새로운 image url
 public struct UserUpdateParams {
+    public init(userId: String, nickname: String?, profileURL: String?) {
+        self.userId = userId
+        self.nickname = nickname
+        self.profileURL = profileURL
+    }
+
     public let userId: String
     public let nickname: String?
     public let profileURL: String?

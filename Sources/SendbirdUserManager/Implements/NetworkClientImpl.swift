@@ -64,7 +64,7 @@ final class SBNetworkClientImpl: SBNetworkClient {
                 return
             }
             
-            guard let type = R.Response.self as? Decodable.Type, let decoded = try? JSONDecoder().decode(type, from: data) as? R.Response else {
+            guard let decoded = try? JSONDecoder().decode(R.Response.self, from: data) else {
                 completionHandler(.failure(SBNetworkError.decodingFailed))
                 return
             }

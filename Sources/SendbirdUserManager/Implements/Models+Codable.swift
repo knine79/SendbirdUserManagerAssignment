@@ -20,10 +20,6 @@ extension UserCreationParams: Encodable {
         try container.encode(self.nickname, forKey: .nickname)
         try? container.encode(self.profileURL, forKey: .profileURL)
     }
-    
-    public static func create(userId: String, nickname: String, profileURL: String?) -> UserCreationParams {
-        UserCreationParams(userId: userId, nickname: nickname, profileURL: profileURL)
-    }
 }
 
 extension UserUpdateParams: Encodable {
@@ -38,10 +34,6 @@ extension UserUpdateParams: Encodable {
         try container.encode(self.userId, forKey: .userId)
         try? container.encode(self.nickname, forKey: .nickname)
         try? container.encode(self.profileURL, forKey: .profileURL)
-    }
-    
-    public static func create(userId: String, nickname: String?, profileURL: String?) -> UserUpdateParams {
-        UserUpdateParams(userId: userId, nickname: nickname, profileURL: profileURL)
     }
 }
 

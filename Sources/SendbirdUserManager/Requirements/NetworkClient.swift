@@ -7,7 +7,7 @@
 
 import Foundation
 
-public protocol Request {
+public protocol Request where Response: Decodable {
     associatedtype Response
 }
 
