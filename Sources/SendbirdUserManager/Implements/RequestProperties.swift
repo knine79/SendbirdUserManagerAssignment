@@ -19,16 +19,23 @@ protocol RequestProperties {
 }
 
 extension RequestProperties {
-    func urlRequest(applicationId: String, apiToken: String) throws -> URLRequest? {
+    func url(applicationId: String) throws -> URL? {
         var urlComponents = URLComponents()
         urlComponents.scheme = "https"
         urlComponents.host = "api-\(applicationId).sendbird.com"
         urlComponents.path = "/v3".appending(endpoint)
         if let queryParams = try queryParams?.toDictionary(), !queryParams.isEmpty {
-            urlComponents.queryItems = queryParams.map { .init(name: $0.key, value: "\($0.value)") }
+            urlComponents.queryItems = queryParams.map {
+                .init(name: $0.key, value: "\($0.value)")
+            }
         }
         
-        guard let url = urlComponents.url else { return nil }
+        return urlComponents.url
+    }
+    
+    func urlRequest(applicationId: String, apiToken: String) throws -> URLRequest? {
+        
+        guard let url = try url(applicationId: applicationId) else { return nil }
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = method.rawValue
         urlRequest.allHTTPHeaderFields = [

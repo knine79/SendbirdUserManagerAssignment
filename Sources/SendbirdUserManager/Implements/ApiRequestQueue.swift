@@ -32,7 +32,7 @@ final class ApiRequestQueue {
             throw ApiRequestQueueError.queueFull
         }
         
-        NSLog("enqueued")
+        printLog("\(requestQueue.count + 1) requests enqueued")
         requestQueue.append(task)
         if canResumeImmediately {
             resumeImmediately()
@@ -42,13 +42,12 @@ final class ApiRequestQueue {
     
     private var canResumeImmediately: Bool {
         lock.lock(); defer { lock.unlock() }
-        NSLog("\(requestCountSinceBeginning), \(Date().addingTimeInterval(-(firstRequestTimeAfterLimitation?.timeIntervalSince1970 ?? 0)).timeIntervalSince1970)")
         return requestCountSinceBeginning < requestsPerSecond || Date().addingTimeInterval(-(firstRequestTimeAfterLimitation?.timeIntervalSince1970 ?? 0)).timeIntervalSince1970 >= 1
     }
     
     private func dequeue() -> URLSessionTask? {
         guard !requestQueue.isEmpty else { return nil }
-        NSLog("dequeued")
+        printLog("dequeued, \(requestQueue.count - 1) requests remained")
         return requestQueue.removeFirst()
     }
     
@@ -69,9 +68,9 @@ final class ApiRequestQueue {
             guard let task = dequeue() else { break }
             task.resume()
             if let request = (task as? URLSessionDataTask)?.currentRequest {
-                NSLog("Request \(request.httpMethod ?? "") \(request.url?.absoluteString ?? "")")
+                printLog("Request \(request.httpMethod ?? "") \(request.url?.absoluteString ?? "")")
             } else {
-                NSLog("Request unknown")
+                printLog("Request unknown")
             }
             if requestCountSinceBeginning == 0 {
                 firstRequestTimeAfterLimitation = Date()

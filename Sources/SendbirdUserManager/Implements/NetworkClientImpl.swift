@@ -9,7 +9,7 @@ import Foundation
 
 
 public enum SBNetworkError: Error {
-    case notInitialized
+    case applicationNotInitialized
     case requestFailed
     case httpError(statusCode: Int, apiError: SBApiError?)
     case emptyData
@@ -33,28 +33,44 @@ final class SBNetworkClientImpl: SBNetworkClient {
     
     func request<R>(request: R, completionHandler: @escaping (Result<R.Response, Error>) -> Void) where R : Request {
         
-        guard let applicationId, let apiToken else {
-            completionHandler(.failure(SBNetworkError.notInitialized))
-            return
-        }
-        
-        guard let urlRequest = try? (request as? RequestProperties)?.urlRequest(applicationId: applicationId, apiToken: apiToken) else {
-            completionHandler(.failure(SBNetworkError.requestFailed))
-            return
-        }
-        
-        let task = URLSession.shared.dataTask(with: urlRequest) {
-            completionHandler(self.dataTaskResult($0, $1, $2))
+        var printError: (Error) -> Void = {
+            printLog("ERROR: \($0)")
         }
         
         do {
-            try apiRequestQueue.enqueue(task)
-        } catch {
-            if error as? ApiRequestQueueError == .queueFull {
-                completionHandler(.failure(SBNetworkError.throughputLimitExceeded))
-            } else {
-                completionHandler(.failure(SBNetworkError.unknown))
+            guard let applicationId, let apiToken else {
+                throw SBNetworkError.applicationNotInitialized
             }
+            
+            guard let urlRequest = try? (request as? RequestProperties)?.urlRequest(applicationId: applicationId, apiToken: apiToken) else {
+                throw SBNetworkError.requestFailed
+            }
+            
+            printError = {
+                printLog("ERROR: \(urlRequest.url?.absoluteString ?? "")\n\($0)")
+            }
+            
+            let task = URLSession.shared.dataTask(with: urlRequest) {
+                do {
+                    completionHandler(.success(try self.decodeData($0, $1, $2)))
+                } catch {
+                    printError(error)
+                    completionHandler(.failure(error))
+                }
+            }
+            
+            do {
+                try apiRequestQueue.enqueue(task)
+            } catch {
+                if error as? ApiRequestQueueError == .queueFull {
+                    throw SBNetworkError.throughputLimitExceeded
+                } else {
+                    throw SBNetworkError.unknown
+                }
+            }
+        } catch {
+            printError(error)
+            completionHandler(.failure(error))
         }
     }
 }
@@ -83,5 +99,30 @@ extension SBNetworkClientImpl {
         }
         
         return .success(decoded)
+    }
+    
+    private func decodeData<T: Decodable>(_ data: Data?, _ response: URLResponse?, _ error: Error?) throws -> T {
+        if let error = error {
+            throw error
+        }
+        
+        guard let response = response as? HTTPURLResponse else {
+            throw SBNetworkError.unknown
+        }
+        
+        guard let data = data else {
+            throw SBNetworkError.emptyData
+        }
+        
+        guard (200...299).contains(response.statusCode) else {
+            let apiError = try? JSONDecoder().decode(SBApiError.self, from: data)
+            throw SBNetworkError.httpError(statusCode: response.statusCode, apiError: apiError)
+        }
+        
+        guard let decoded = try? JSONDecoder().decode(T.self, from: data) else {
+            throw SBNetworkError.decodingFailed
+        }
+        
+        return decoded
     }
 }

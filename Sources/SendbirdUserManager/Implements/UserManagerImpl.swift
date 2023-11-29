@@ -10,63 +10,136 @@ import Foundation
 public enum SBUserManagerError: Error {
     case creationLimitExceeded
     case creationFailedPartially([String: Error])
+    case invalidParameters(String)
+    case uniqueKeyConstaintViolated
 }
 
 public final class SBUserManagerImpl: SBUserManager {
     public init() {}
     
-    private var _networkClient = SBNetworkClientImpl()
+    private let maxUserIdLength = 80
+    private let maxNicknameLength = 80
+    private let maxProfileURLLength = 2048
+    
+    private let _networkClient = SBNetworkClientImpl()
     public var networkClient: SBNetworkClient {
         _networkClient
     }
-
-    private var _userStorage = SBUserStorageImpl()
-    public var userStorage: SBUserStorage {
-        _userStorage
+    
+    public var userStorage: SBUserStorage = SBUserStorageImpl()
+    
+    private var applicationId: String? {
+        didSet {
+            if applicationId != oldValue {
+                userStorage = SBUserStorageImpl()
+                _networkClient.applicationId = applicationId
+            }
+        }
     }
     
-    
+    private var apiToken: String? {
+        didSet {
+            _networkClient.apiToken = apiToken
+        }
+    }
+}
+
+// MARK: - pubilc methods
+extension SBUserManagerImpl {
     public func initApplication(applicationId: String, apiToken: String) {
-        _networkClient.applicationId = applicationId
-        _networkClient.apiToken = apiToken
+        self.applicationId = applicationId
+        self.apiToken = apiToken
     }
     
     public func createUser(params: UserCreationParams, completionHandler: ((UserResult) -> Void)?) {
+    
+        do {
+            try validateParams(params)
+        } catch {
+            completionHandler?(.failure(error))
+            return
+        }
+        
         let request = CreateUserRequest(bodyParams: params)
-        _networkClient.request(request: request, completionHandler: completionHandler ?? { _ in })
+        networkClient.request(request: request) { [weak self] in
+            completionHandler?($0)
+            if case .success(let user) = $0 {
+                self?.userStorage.upsertUser(user)
+            }
+        }
     }
     
     public func createUsers(params: [UserCreationParams], completionHandler: ((UsersResult) -> Void)?) {
-        guard params.count <= 10 else {
-            completionHandler?(.failure(SBUserManagerError.creationLimitExceeded))
+        
+        do {
+            try validateParams(params)
+        } catch {
+            completionHandler?(.failure(error))
             return
         }
+        
         var users: [SBUser] = []
         var errors: [String: Error] = [:]
-        params.forEach { eachParams in
-            createUser(params: eachParams) {
+        params.enumerated().forEach { eachParams in
+            createUser(params: eachParams.element) { [weak self] in
                 switch $0 {
-                case .success(let user): users.append(user)
-                case .failure(let error): errors[eachParams.userId] = error
+                case .success(let user): 
+                    users.append(user)
+                    self?.userStorage.upsertUser(user)
+                case .failure(let error):
+                    errors[eachParams.element.userId] = error
+                }
+                
+                if eachParams.offset == params.count - 1 {
+                    if users.count == params.count, errors.isEmpty {
+                        completionHandler?(.success(users))
+                    } else {
+                        completionHandler?(.failure(SBUserManagerError.creationFailedPartially(errors)))
+                    }
                 }
             }
-        }
-        
-        if users.count == params.count, errors.isEmpty {
-            completionHandler?(.success(users))
-        } else {
-            completionHandler?(.failure(SBUserManagerError.creationFailedPartially(errors)))
         }
     }
     
     public func updateUser(params: UserUpdateParams, completionHandler: ((UserResult) -> Void)?) {
+        
+        do {
+            try validateParams(params)
+        } catch {
+            completionHandler?(.failure(error))
+            return
+        }
+        
         let request = UpdateUserRequest(userId: params.userId, bodyParams: params)
-        _networkClient.request(request: request, completionHandler: completionHandler ?? { _ in })
+        networkClient.request(request: request) { [weak self] in
+            completionHandler?($0)
+            if case .success(let user) = $0 {
+                self?.userStorage.upsertUser(user)
+            }
+        }
     }
     
     public func getUser(userId: String, completionHandler: ((UserResult) -> Void)?) {
+        
+        do {
+            try validateUserId(userId, isCreating: false)
+        } catch {
+            completionHandler?(.failure(error))
+            return
+        }
+        
+        if let user = userStorage.getUser(for: userId) {
+            completionHandler?(.success(user))
+            return
+        }
+        
         let request = GetUserRequest(userId: userId)
-        _networkClient.request(request: request, completionHandler: completionHandler ?? { _ in })
+        networkClient.request(request: request) { [weak self] in
+            completionHandler?($0)
+            if case .success(let user) = $0 {
+                self?.userStorage.upsertUser(user)
+            }
+        }
     }
     
     private struct UsersGetParams: Encodable {
@@ -75,7 +148,80 @@ public final class SBUserManagerImpl: SBUserManager {
     }
     
     public func getUsers(nicknameMatches nickname: String, completionHandler: ((UsersResult) -> Void)?) {
+        
+        do {
+            try validateNickname(nickname, required: false)
+        } catch {
+            completionHandler?(.failure(error))
+            return
+        }
+        
         let request = GetUsersRequest(queryParams: UsersGetParams(nickname: nickname, limit: 10))
-        _networkClient.request(request: request, completionHandler: completionHandler ?? { _ in })
+        networkClient.request(request: request) { [weak self] in
+            switch $0 {
+            case .success(let response):
+                completionHandler?(.success(response.users))
+                response.users.forEach { user in
+                    self?.userStorage.upsertUser(user)
+                }
+            case .failure(let error):
+                completionHandler?(.failure(error))
+            }
+        }
+    }
+}
+
+// MARK: - parameter validation
+extension SBUserManagerImpl {
+    private func validateParams(_ params: UserCreationParams) throws {
+        try validateUserId(params.userId, isCreating: true)
+        try validateNickname(params.nickname, required: true)
+        try validateProfileURL(params.profileURL)
+    }
+    
+    private func validateParams(_ params: [UserCreationParams]) throws {
+        guard params.count <= 10 else {
+            throw SBUserManagerError.creationLimitExceeded
+        }
+    }
+    
+    private func validateParams(_ params: UserUpdateParams) throws {
+        try validateUserId(params.userId, isCreating: false)
+        try validateNickname(params.nickname, required: false)
+        try validateProfileURL(params.profileURL)
+    }
+    
+    private func validateUserId(_ userId: String, isCreating: Bool) throws {
+        guard !userId.isEmpty else {
+            throw SBUserManagerError.invalidParameters("userId is empty")
+        }
+        
+        guard userId.count <= maxUserIdLength else {
+            throw SBUserManagerError.invalidParameters("userId is too long")
+        }
+        
+        guard !isCreating || userStorage.getUser(for: userId) == nil else {
+            throw SBUserManagerError.uniqueKeyConstaintViolated
+        }
+    }
+    
+    private func validateNickname(_ nickname: String?, required: Bool) throws {
+        guard !required || nickname?.isEmpty != true else {
+            throw SBUserManagerError.invalidParameters("nickname is empty")
+        }
+        
+        guard nickname?.count ?? 0 <= maxNicknameLength else {
+            throw SBUserManagerError.invalidParameters("nickname is too long")
+        }
+    }
+    
+    private func validateProfileURL(_ profileURL: String?) throws {
+        guard profileURL?.count ?? 0 <= maxProfileURLLength else {
+            throw SBUserManagerError.invalidParameters("profileURL is too long")
+        }
+        
+        guard profileURL == nil || URL(string: profileURL!) != nil else {
+            throw SBUserManagerError.invalidParameters("profileURL is invalid url")
+        }
     }
 }

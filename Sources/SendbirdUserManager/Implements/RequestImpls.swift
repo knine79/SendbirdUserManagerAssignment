@@ -18,8 +18,13 @@ struct GetUserRequest: Request, RequestProperties {
     var bodyParams: Encodable? { nil }
 }
 
+struct GetUsersResponse: Decodable {
+    let users: [SBUser]
+    let next: String
+}
+
 struct GetUsersRequest: Request, RequestProperties {
-    typealias Response = [SBUser]
+    typealias Response = GetUsersResponse
 
     var method: SBApiRequestMethod { .get }
     var endpoint: String { "/users" }
@@ -42,7 +47,7 @@ struct UpdateUserRequest: Request, RequestProperties {
     let userId: String
     
     var method: SBApiRequestMethod { .put }
-    var endpoint: String { "/users\(userId)" }
+    var endpoint: String { "/users/\(userId)" }
     var queryParams: Encodable? { nil }
     var bodyParams: Encodable?
 }
