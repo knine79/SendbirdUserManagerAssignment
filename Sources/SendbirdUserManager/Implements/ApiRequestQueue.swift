@@ -7,21 +7,31 @@
 
 import Foundation
 
+enum ApiRequestQueueError: Error {
+    case queueFull
+}
+
 final class ApiRequestQueue {
     private var requestQueue: [URLSessionTask] = []
     
     private let requestsPerSecond: Int
+    private let maximumQueueSize: Int
     private var firstRequestTimeAfterLimitation: Date?
     private var requestCountSinceBeginning: Int = 0
     private let lock = NSLock()
     
     private lazy var timer: Timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true, block: resumeByTimeout(_:))
     
-    init(requestsPerSecond: Int = 1) {
+    init(requestsPerSecond: Int = 1, maximumQueueSize: Int = 15) {
         self.requestsPerSecond = requestsPerSecond
+        self.maximumQueueSize = maximumQueueSize
     }
     
-    func enqueue(_ task: URLSessionTask) {
+    func enqueue(_ task: URLSessionTask) throws {
+        guard requestQueue.count < maximumQueueSize else {
+            throw ApiRequestQueueError.queueFull
+        }
+        
         NSLog("enqueued")
         requestQueue.append(task)
         if canResumeImmediately {

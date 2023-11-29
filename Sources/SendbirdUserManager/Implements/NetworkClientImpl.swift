@@ -14,6 +14,7 @@ public enum SBNetworkError: Error {
     case httpError(statusCode: Int, apiError: SBApiError?)
     case emptyData
     case decodingFailed
+    case throughputLimitExceeded
     case unknown
 }
 
@@ -42,36 +43,45 @@ final class SBNetworkClientImpl: SBNetworkClient {
             return
         }
         
-        let task = URLSession.shared.dataTask(with: urlRequest) { data, response, error in
-            if let error = error {
-                completionHandler(.failure(error))
-                return
-            }
-            
-            guard let response = response as? HTTPURLResponse else {
-                completionHandler(.failure(SBNetworkError.unknown))
-                return
-            }
-            
-            guard let data = data else {
-                completionHandler(.failure(SBNetworkError.emptyData))
-                return
-            }
-            
-            guard (200...299).contains(response.statusCode) else {
-                let apiError = try? JSONDecoder().decode(SBApiError.self, from: data)
-                completionHandler(.failure(SBNetworkError.httpError(statusCode: response.statusCode, apiError: apiError)))
-                return
-            }
-            
-            guard let decoded = try? JSONDecoder().decode(R.Response.self, from: data) else {
-                completionHandler(.failure(SBNetworkError.decodingFailed))
-                return
-            }
-            
-            completionHandler(.success(decoded))
+        let task = URLSession.shared.dataTask(with: urlRequest) {
+            completionHandler(self.dataTaskResult($0, $1, $2))
         }
         
-        apiRequestQueue.enqueue(task)
+        do {
+            try apiRequestQueue.enqueue(task)
+        } catch {
+            if error as? ApiRequestQueueError == .queueFull {
+                completionHandler(.failure(SBNetworkError.throughputLimitExceeded))
+            } else {
+                completionHandler(.failure(SBNetworkError.unknown))
+            }
+        }
+    }
+}
+
+extension SBNetworkClientImpl {
+    private func dataTaskResult<T: Decodable>(_ data: Data?, _ response: URLResponse?, _ error: Error?) -> Result<T, Error> {
+        if let error = error {
+            return .failure(error)
+        }
+        
+        guard let response = response as? HTTPURLResponse else {
+            return .failure(SBNetworkError.unknown)
+        }
+        
+        guard let data = data else {
+            return .failure(SBNetworkError.emptyData)
+        }
+        
+        guard (200...299).contains(response.statusCode) else {
+            let apiError = try? JSONDecoder().decode(SBApiError.self, from: data)
+            return .failure(SBNetworkError.httpError(statusCode: response.statusCode, apiError: apiError))
+        }
+        
+        guard let decoded = try? JSONDecoder().decode(T.self, from: data) else {
+            return .failure(SBNetworkError.decodingFailed)
+        }
+        
+        return .success(decoded)
     }
 }
