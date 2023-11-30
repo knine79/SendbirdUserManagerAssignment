@@ -14,7 +14,6 @@ public enum SBNetworkError: Error {
     case httpError(statusCode: Int, apiError: SBApiError?)
     case emptyData
     case decodingFailed
-    case throughputLimitExceeded
     case unknown
 }
 
@@ -29,12 +28,10 @@ final class SBNetworkClientImpl: SBNetworkClient {
     var applicationId: String?
     var apiToken: String?
     
-    var apiRequestQueue = ApiRequestQueue()
-    
     func request<R>(request: R, completionHandler: @escaping (Result<R.Response, Error>) -> Void) where R : Request {
         
         var printError: (Error) -> Void = {
-            printLog("ERROR: \($0)")
+            Log.error("ERROR: \($0)")
         }
         
         do {
@@ -47,9 +44,10 @@ final class SBNetworkClientImpl: SBNetworkClient {
             }
             
             printError = {
-                printLog("ERROR: \(urlRequest.url?.absoluteString ?? "")\n\($0)")
+                Log.error("ERROR: \(urlRequest.url?.absoluteString ?? "")\n\($0)")
             }
             
+            Log.info("Request \(urlRequest.httpMethod ?? "") \(urlRequest.url?.absoluteString ?? "")")
             let task = URLSession.shared.dataTask(with: urlRequest) {
                 do {
                     completionHandler(.success(try self.decodeData($0, $1, $2)))
@@ -59,15 +57,7 @@ final class SBNetworkClientImpl: SBNetworkClient {
                 }
             }
             
-            do {
-                try apiRequestQueue.enqueue(task)
-            } catch {
-                if error as? ApiRequestQueueError == .queueFull {
-                    throw SBNetworkError.throughputLimitExceeded
-                } else {
-                    throw SBNetworkError.unknown
-                }
-            }
+            task.resume()
         } catch {
             printError(error)
             completionHandler(.failure(error))

@@ -12,35 +12,43 @@ public enum SBUserManagerError: Error {
     case creationFailedPartially([String: Error])
     case invalidParameters(String)
     case uniqueKeyConstaintViolated
+    case rateLimitExceeded
 }
 
-
 public class SBUserManagerImpl: SBUserManager {
+    
+    // MARK: private data
+    private let maxUserIdLength = 80
+    private let maxNicknameLength = 80
+    private let maxProfileURLLength = 2048
+    
+    private var applicationId: String?
+    private var apiToken: String?
+    private var scheduler: ThrottlingScheduler
+
+    // public interfaces
+    public var networkClient: SBNetworkClient
+    public var userStorage: SBUserStorage
+
     required public init() {
         self.networkClient = SBUserManagerImpl.shared.networkClient
         self.userStorage = SBUserManagerImpl.shared.userStorage
-        self.applicationId = (SBUserManagerImpl.shared as? SBUserManagerImpl)?.applicationId
-        self.apiToken = (SBUserManagerImpl.shared as? SBUserManagerImpl)?.apiToken
+        self.applicationId = SBUserManagerImpl.shared.applicationId
+        self.apiToken = SBUserManagerImpl.shared.apiToken
+        self.scheduler = SBUserManagerImpl.shared.scheduler
     }
     
     private init(networkClient: SBNetworkClient, userStorage: SBUserStorage) {
         self.networkClient = networkClient
         self.userStorage = userStorage
+        self.scheduler = ThrottlingScheduler(throttlingTime: 1)
     }
     
-    public static var shared: SBUserManager = SBUserManagerImpl(networkClient: SBNetworkClientImpl(), userStorage: SBUserStorageImpl())
-    
-    private let maxUserIdLength = 80
-    private let maxNicknameLength = 80
-    private let maxProfileURLLength = 2048
-    
-    public var networkClient: SBNetworkClient
-    public var userStorage: SBUserStorage
-    
-    private var applicationId: String?
-    private var apiToken: String?
+    public static var shared: SBUserManagerImpl = SBUserManagerImpl(networkClient: SBNetworkClientImpl(), userStorage: SBUserStorageImpl())
+
 
     public func initApplication(applicationId: String, apiToken: String) {
+        Log.debug("initApplication")
         if applicationId != self.applicationId || apiToken != self.apiToken {
             let networkClient = SBNetworkClientImpl()
             networkClient.applicationId = applicationId
@@ -54,19 +62,35 @@ public class SBUserManagerImpl: SBUserManager {
         self.apiToken = apiToken
     }
     
+    private func scheduledRequest<R>(request: R, completionHandler: @escaping (Result<R.Response, Error>) -> Void) where R : Request {
+        
+        let isScheduled = scheduler.schedule { [weak self] in
+            guard let self else { return }
+            networkClient.request(request: request, completionHandler: completionHandler)
+        }
+        if !isScheduled {
+            completionHandler(.failure(SBUserManagerError.rateLimitExceeded))
+        }
+    }
+    
     public func createUser(params: UserCreationParams, completionHandler: ((UserResult) -> Void)?) {
     
         do {
             try validateParams(params)
         } catch {
+            Log.error("\(#function) \(error)")
             completionHandler?(.failure(error))
             return
         }
         
         let request = CreateUserRequest(bodyParams: params)
-        networkClient.request(request: request) { [weak self] in
-            if case .success(let user) = $0 {
+        scheduledRequest(request: request) { [weak self] in
+            switch $0 {
+            case .success(let user):
+                Log.verbose("\(#function) user(\(params.userId)) created and cached")
                 self?.userStorage.upsertUser(user)
+            case .failure(let error):
+                Log.error("\(#function) \(error)")
             }
             completionHandler?($0)
         }
@@ -77,6 +101,7 @@ public class SBUserManagerImpl: SBUserManager {
         do {
             try validateParams(params)
         } catch {
+            Log.error("\(#function) \(error)")
             completionHandler?(.failure(error))
             return
         }
@@ -95,9 +120,12 @@ public class SBUserManagerImpl: SBUserManager {
                 
                 if eachParams.offset == params.count - 1 {
                     if users.count == params.count, errors.isEmpty {
+                        Log.verbose("\(#function) \(params.count) users created and cached")
                         completionHandler?(.success(users))
                     } else {
-                        completionHandler?(.failure(SBUserManagerError.creationFailedPartially(errors)))
+                        let error = SBUserManagerError.creationFailedPartially(errors)
+                        Log.error("\(#function) \(error)")
+                        completionHandler?(.failure(error))
                     }
                 }
             }
@@ -109,14 +137,19 @@ public class SBUserManagerImpl: SBUserManager {
         do {
             try validateParams(params)
         } catch {
+            Log.error("\(#function) \(error)")
             completionHandler?(.failure(error))
             return
         }
         
         let request = UpdateUserRequest(userId: params.userId, bodyParams: params)
-        networkClient.request(request: request) { [weak self] in
-            if case .success(let user) = $0 {
+        scheduledRequest(request: request) { [weak self] in
+            switch $0 {
+            case .success(let user):
+                Log.verbose("\(#function) user(\(params.userId)) data updated and cached")
                 self?.userStorage.upsertUser(user)
+            case .failure(let error):
+                Log.error("\(#function) \(error)")
             }
             completionHandler?($0)
         }
@@ -127,19 +160,25 @@ public class SBUserManagerImpl: SBUserManager {
         do {
             try validateUserId(userId, isCreating: false)
         } catch {
+            Log.error("\(#function) \(error)")
             completionHandler?(.failure(error))
             return
         }
         
         if let user = userStorage.getUser(for: userId) {
+            Log.verbose("\(#function)(\(userId)) cache hit")
             completionHandler?(.success(user))
             return
         }
         
         let request = GetUserRequest(userId: userId)
-        networkClient.request(request: request) { [weak self] in
-            if case .success(let user) = $0 {
+        scheduledRequest(request: request) { [weak self] in
+            switch $0 {
+            case .success(let user):
+                Log.verbose("\(#function) user(\(userId)) data fetched and cached")
                 self?.userStorage.upsertUser(user)
+            case .failure(let error):
+                Log.error("\(#function) \(error)")
             }
             completionHandler?($0)
         }
@@ -155,19 +194,22 @@ public class SBUserManagerImpl: SBUserManager {
         do {
             try validateNickname(nickname, required: true)
         } catch {
+            Log.error("\(#function) \(error)")
             completionHandler?(.failure(error))
             return
         }
         
         let request = GetUsersRequest(queryParams: UsersGetParams(nickname: nickname, limit: 10))
-        networkClient.request(request: request) { [weak self] in
+        scheduledRequest(request: request) { [weak self] in
             switch $0 {
             case .success(let response):
                 response.users.forEach { user in
                     self?.userStorage.upsertUser(user)
                 }
+                Log.verbose("\(#function) \(response.users.count) users data fetched and cached")
                 completionHandler?(.success(response.users))
             case .failure(let error):
+                Log.error("\(#function) \(error)")
                 completionHandler?(.failure(error))
             }
         }
