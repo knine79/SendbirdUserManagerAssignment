@@ -10,19 +10,35 @@ import Foundation
 final class SBUserStorageImpl: SBUserStorage {
     var usersMap: [String: SBUser] = [:]
     
+    let serialQueue = DispatchQueue(label: "com.sendbird.user-manager.user-storage.serial-queue", qos: .default)
+    
     func upsertUser(_ user: SBUser) {
-        usersMap[user.userId] = user
+        serialQueue.sync {
+            usersMap[user.userId] = user
+        }
     }
     
     func getUsers() -> [SBUser] {
-        Array(usersMap.values)
+        var result: [SBUser] = []
+        serialQueue.sync {
+            result = Array(usersMap.values)
+        }
+        return result
     }
     
     func getUsers(for nickname: String) -> [SBUser] {
-        usersMap.values.filter { $0.nickname == nickname }
+        var result: [SBUser] = []
+        serialQueue.sync {
+            result = usersMap.values.filter { $0.nickname == nickname }
+        }
+        return result
     }
     
     func getUser(for userId: String) -> (SBUser)? {
-        usersMap[userId]
+        var result: SBUser?
+        serialQueue.sync {
+            result = usersMap[userId]
+        }
+        return result
     }
 }

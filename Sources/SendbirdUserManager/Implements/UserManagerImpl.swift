@@ -16,15 +16,13 @@ public enum SBUserManagerError: Error {
 
 public final class SBUserManagerImpl: SBUserManager {
     public init() {}
+    public static var shared: SBUserManager = SBUserManagerImpl()
     
     private let maxUserIdLength = 80
     private let maxNicknameLength = 80
     private let maxProfileURLLength = 2048
     
-    private let _networkClient = SBNetworkClientImpl()
-    public var networkClient: SBNetworkClient {
-        _networkClient
-    }
+    public var networkClient: SBNetworkClient = SBNetworkClientImpl()
     
     public var userStorage: SBUserStorage = SBUserStorageImpl()
     
@@ -32,14 +30,14 @@ public final class SBUserManagerImpl: SBUserManager {
         didSet {
             if applicationId != oldValue {
                 userStorage = SBUserStorageImpl()
-                _networkClient.applicationId = applicationId
+                (networkClient as? SBNetworkClientImpl)?.applicationId = applicationId
             }
         }
     }
     
     private var apiToken: String? {
         didSet {
-            _networkClient.apiToken = apiToken
+            (networkClient as? SBNetworkClientImpl)?.apiToken = apiToken
         }
     }
 }
@@ -62,10 +60,10 @@ extension SBUserManagerImpl {
         
         let request = CreateUserRequest(bodyParams: params)
         networkClient.request(request: request) { [weak self] in
-            completionHandler?($0)
             if case .success(let user) = $0 {
                 self?.userStorage.upsertUser(user)
             }
+            completionHandler?($0)
         }
     }
     
@@ -112,10 +110,10 @@ extension SBUserManagerImpl {
         
         let request = UpdateUserRequest(userId: params.userId, bodyParams: params)
         networkClient.request(request: request) { [weak self] in
-            completionHandler?($0)
             if case .success(let user) = $0 {
                 self?.userStorage.upsertUser(user)
             }
+            completionHandler?($0)
         }
     }
     
@@ -135,10 +133,10 @@ extension SBUserManagerImpl {
         
         let request = GetUserRequest(userId: userId)
         networkClient.request(request: request) { [weak self] in
-            completionHandler?($0)
             if case .success(let user) = $0 {
                 self?.userStorage.upsertUser(user)
             }
+            completionHandler?($0)
         }
     }
     
@@ -160,10 +158,10 @@ extension SBUserManagerImpl {
         networkClient.request(request: request) { [weak self] in
             switch $0 {
             case .success(let response):
-                completionHandler?(.success(response.users))
                 response.users.forEach { user in
                     self?.userStorage.upsertUser(user)
                 }
+                completionHandler?(.success(response.users))
             case .failure(let error):
                 completionHandler?(.failure(error))
             }
