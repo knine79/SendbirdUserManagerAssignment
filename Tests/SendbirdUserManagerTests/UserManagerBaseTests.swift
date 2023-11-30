@@ -303,6 +303,7 @@ open class UserManagerBaseTests: XCTestCase {
         XCTAssertEqual(successResults.count, 10)
         XCTAssertEqual(rateLimitResults.count, 1)
     }
+    
     public func testRateLimitCreateUser() {
         let userManager = userManagerType().init()
         

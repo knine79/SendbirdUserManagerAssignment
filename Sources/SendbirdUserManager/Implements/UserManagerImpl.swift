@@ -14,37 +14,42 @@ public enum SBUserManagerError: Error {
     case uniqueKeyConstaintViolated
 }
 
-public final class SBUserManagerImpl: SBUserManager {
-    public init() {}
-    public static var shared: SBUserManager = SBUserManagerImpl()
+
+public class SBUserManagerImpl: SBUserManager {
+    required public init() {
+        self.networkClient = SBUserManagerImpl.shared.networkClient
+        self.userStorage = SBUserManagerImpl.shared.userStorage
+        self.applicationId = (SBUserManagerImpl.shared as? SBUserManagerImpl)?.applicationId
+        self.apiToken = (SBUserManagerImpl.shared as? SBUserManagerImpl)?.apiToken
+    }
+    
+    private init(networkClient: SBNetworkClient, userStorage: SBUserStorage) {
+        self.networkClient = networkClient
+        self.userStorage = userStorage
+    }
+    
+    public static var shared: SBUserManager = SBUserManagerImpl(networkClient: SBNetworkClientImpl(), userStorage: SBUserStorageImpl())
     
     private let maxUserIdLength = 80
     private let maxNicknameLength = 80
     private let maxProfileURLLength = 2048
     
-    public var networkClient: SBNetworkClient = SBNetworkClientImpl()
+    public var networkClient: SBNetworkClient
+    public var userStorage: SBUserStorage
     
-    public var userStorage: SBUserStorage = SBUserStorageImpl()
-    
-    private var applicationId: String? {
-        didSet {
-            if applicationId != oldValue {
-                userStorage = SBUserStorageImpl()
-                (networkClient as? SBNetworkClientImpl)?.applicationId = applicationId
-            }
-        }
-    }
-    
-    private var apiToken: String? {
-        didSet {
-            (networkClient as? SBNetworkClientImpl)?.apiToken = apiToken
-        }
-    }
-}
+    private var applicationId: String?
+    private var apiToken: String?
 
-// MARK: - pubilc methods
-extension SBUserManagerImpl {
     public func initApplication(applicationId: String, apiToken: String) {
+        if applicationId != self.applicationId || apiToken != self.apiToken {
+            let networkClient = SBNetworkClientImpl()
+            networkClient.applicationId = applicationId
+            networkClient.apiToken = apiToken
+            self.networkClient = networkClient
+        }
+        if applicationId != self.applicationId {
+            self.userStorage = SBUserStorageImpl()
+        }
         self.applicationId = applicationId
         self.apiToken = apiToken
     }
@@ -148,7 +153,7 @@ extension SBUserManagerImpl {
     public func getUsers(nicknameMatches nickname: String, completionHandler: ((UsersResult) -> Void)?) {
         
         do {
-            try validateNickname(nickname, required: false)
+            try validateNickname(nickname, required: true)
         } catch {
             completionHandler?(.failure(error))
             return
@@ -190,7 +195,7 @@ extension SBUserManagerImpl {
     }
     
     private func validateUserId(_ userId: String, isCreating: Bool) throws {
-        guard !userId.isEmpty else {
+        guard !userId.trimmed.isEmpty else {
             throw SBUserManagerError.invalidParameters("userId is empty")
         }
         
@@ -204,7 +209,7 @@ extension SBUserManagerImpl {
     }
     
     private func validateNickname(_ nickname: String?, required: Bool) throws {
-        guard !required || nickname?.isEmpty != true else {
+        guard !required || nickname?.trimmed.isEmpty != true else {
             throw SBUserManagerError.invalidParameters("nickname is empty")
         }
         
