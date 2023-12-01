@@ -80,12 +80,24 @@ final class MockNetworkClient: SBNetworkClient {
             completionHandler(.success(userDB[request.userId] as! R.Response))
             
         } else if let request = request as? GetUsersRequest,
-                  let nickname = request.queryParams["nickname"] {
+                  let nickname = request.queryParams["nickname"],
+                  let limit = request.queryParams["limit"] {
+            
+            let limit = Int(limit) ?? 10
+            let token = request.queryParams["token"] ?? "0"
             
             let filtered = userDB.values.filter {
                 $0.nickname?.replacingOccurrences(of: nickname, with: "") != $0.nickname
             }
-            completionHandler(.success(GetUsersResponse(users: filtered, next: "") as! R.Response))
+            
+            let startIndex = Int(token) ?? 0
+            let pageSize = min(filtered.count - startIndex, limit)
+            let endIndex = startIndex + pageSize - 1
+            let paged = filtered.isEmpty ? [] : Array(filtered[startIndex...endIndex])
+            
+            let next = paged.count < userDB.values.count ? "\(endIndex + 1)" : ""
+            
+            completionHandler(.success(GetUsersResponse(users: paged, next: next) as! R.Response))
         }
     }
 }

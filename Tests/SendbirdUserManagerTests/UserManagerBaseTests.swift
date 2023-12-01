@@ -140,6 +140,55 @@ open class UserManagerBaseTests: XCTestCase {
         wait(for: [expectation], timeout: 10.0)
     }
     
+    public func testGetUsersNext() {
+        let userManager = userManagerType().init()
+
+        let dispatchGroup = DispatchGroup()
+        
+        // first init
+        userManager.initApplication(applicationId: "AppID1", apiToken: "Token1")
+        
+        let paramsArray = (0..<11).map { UserCreationParams(userId: "user\($0)", nickname: "John\($0)", profileURL: nil) }
+
+        dispatchGroup.enter()
+        userManager.createUsers(params: paramsArray.dropLast()) { result in
+            if case .success = result {
+                dispatchGroup.enter()
+                userManager.createUser(params: paramsArray.last!) { result in
+                    if case .success = result {
+                        // Second init with a different App ID to reset cache
+                        userManager.initApplication(applicationId: "AppID2", apiToken: "Token2")
+                        
+                        // Third init with a original App ID
+                        userManager.initApplication(applicationId: "AppID1", apiToken: "Token1")
+                        
+                        // Fetch first page of user list
+                        dispatchGroup.enter()
+                        userManager.getUsers(nicknameMatches: "John", token: nil) { getResult in
+                            if case .success(let response) = getResult {
+                                dispatchGroup.enter()
+                                userManager.getUsers(nicknameMatches: "John", token: response.next) { getResult in
+                                    switch getResult {
+                                    case .success(let response):
+                                        XCTAssertEqual(response.users.count, 1)
+                                    case .failure(let error):
+                                        XCTFail("Failed with error: \(error)")
+                                    }
+                                    dispatchGroup.leave()
+                                }
+                                dispatchGroup.leave()
+                            }
+                        }
+                        dispatchGroup.leave()
+                    }
+                }
+                dispatchGroup.leave()
+            }
+        }
+
+        dispatchGroup.wait()
+    }
+    
     public func testGetUsersWithNicknameFilter() {
         let userManager = userManagerType().init()
 
@@ -276,13 +325,13 @@ open class UserManagerBaseTests: XCTestCase {
     public func testRateLimitGetUser() {
         let userManager = userManagerType().init()
 
-        // Concurrently get user info for 11 users
         let dispatchGroup = DispatchGroup()
         var results: [UserResult] = []
         
+        // first init
         userManager.initApplication(applicationId: "AppID1", apiToken: "Token1")
         
-        let paramsArray = (0..<11).map { UserCreationParams(userId: "user\($0)", nickname: "user\($0)", profileURL: nil) }
+        let paramsArray = (0..<11).map { UserCreationParams(userId: "user\($0)", nickname: "John\($0)", profileURL: nil) }
 
         dispatchGroup.enter()
         userManager.createUsers(params: paramsArray.dropLast()) { result in
@@ -290,10 +339,13 @@ open class UserManagerBaseTests: XCTestCase {
                 dispatchGroup.enter()
                 userManager.createUser(params: paramsArray.last!) { result in
                     if case .success = result {
+                        // Second init with a different App ID to reset cache
                         userManager.initApplication(applicationId: "AppID2", apiToken: "Token2")
                         
+                        // Third init with a original App ID
                         userManager.initApplication(applicationId: "AppID1", apiToken: "Token1")
                         
+                        // Concurrently get user info for 11 users
                         for i in 0..<11 {
                             dispatchGroup.enter()
                             userManager.getUser(userId: "user\(i)") { result in
@@ -316,7 +368,38 @@ open class UserManagerBaseTests: XCTestCase {
             return false
         }
         let rateLimitResults = results.filter {
-            if case .failure(let error) = $0 { return true }
+            if case .failure = $0 { return true }
+            return false
+        }
+
+        XCTAssertEqual(successResults.count, 10)
+        XCTAssertEqual(rateLimitResults.count, 1)
+    }
+    
+    public func testRateLimitGetUsers() {
+        let userManager = userManagerType().init()
+
+        let dispatchGroup = DispatchGroup()
+        var results: [UsersResult] = []
+
+        // Concurrently get users info 11 times
+        for i in 0..<11 {
+            dispatchGroup.enter()
+            userManager.getUsers(nicknameMatches: "user\(i)") { result in
+                results.append(result)
+                dispatchGroup.leave()
+            }
+        }
+                        
+        dispatchGroup.wait()
+
+        // Expect 10 successful and 1 rateLimitExceeded response
+        let successResults = results.filter {
+            if case .success = $0 { return true }
+            return false
+        }
+        let rateLimitResults = results.filter {
+            if case .failure = $0 { return true }
             return false
         }
 
@@ -395,13 +478,13 @@ open class UserManagerBaseTests: XCTestCase {
         let createParams = UserCreationParams(userId: "user", nickname: "NewNick", profileURL: nil)
         let updateParams = UserUpdateParams(userId: "user", nickname: "NewNick", profileURL: nil)
 
-        // Concurrently update 11 users
         let dispatchGroup = DispatchGroup()
         var results: [UserResult] = []
 
         dispatchGroup.enter()
         userManager.createUser(params: createParams) { result in
             if case .success = result {
+                // Concurrently update 11 users
                 for _ in 0..<11 {
                     dispatchGroup.enter()
                     userManager.updateUser(params: updateParams) { result in

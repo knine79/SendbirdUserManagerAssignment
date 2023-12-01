@@ -191,6 +191,18 @@ public class SBUserManagerImpl: SBUserManager {
     }
     
     public func getUsers(nicknameMatches nickname: String, completionHandler: ((UsersResult) -> Void)?) {
+        getUsers(nicknameMatches: nickname, token: nil) {
+            switch $0 {
+            case .success(let response):
+                completionHandler?(.success(response.users))
+            case .failure(let error):
+                completionHandler?(.failure(error))
+            }
+        }
+    }
+    
+    public func getUsers(nicknameMatches nickname: String, token: String?, completionHandler: ((UsersNextResult) -> Void)?) {
+        
         Log.verbose("\(#function) called")
         
         do {
@@ -201,7 +213,7 @@ public class SBUserManagerImpl: SBUserManager {
             return
         }
         
-        let request = GetUsersRequest(queryParams: ["nickname": nickname, "limit": "10"])
+        let request = GetUsersRequest(queryParams: ["nickname": nickname, "limit": "10", "token": token ?? ""])
         limitedRequest(request: request) { [weak self] in
             switch $0 {
             case .success(let response):
@@ -209,7 +221,7 @@ public class SBUserManagerImpl: SBUserManager {
                     self?.userStorage.upsertUser(user)
                 }
                 Log.verbose("\(#function) \(response.users.count) users data fetched and cached")
-                completionHandler?(.success(response.users))
+                completionHandler?(.success((users: response.users, next: response.next)))
             case .failure(let error):
                 Log.error("\(#function) \(error)")
                 completionHandler?(.failure(error))

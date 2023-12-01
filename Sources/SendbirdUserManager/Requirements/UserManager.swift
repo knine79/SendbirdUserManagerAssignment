@@ -9,6 +9,7 @@ import Foundation
 
 public typealias UserResult = Result<(SBUser), Error>
 public typealias UsersResult = Result<[SBUser], Error>
+public typealias UsersNextResult = Result<(users: [SBUser], next: String), Error>
 
 /// Sendbird User Managent를 위한 SDK interface입니다.
 /// 사용될땐 SBUserManager.shared처럼 singleton으로 선언이 되어서 사용이 됩니다. 
@@ -55,5 +56,11 @@ public protocol SBUserManager {
     /// Nickname을 필터로 사용하여 해당 nickname을 가진 User 목록을 가져옵니다
     /// GET API를 호출하고 캐시에 저장합니다
     /// Get users API를 활용할 때 limit은 10으로 고정합니다
-    func getUsers(nicknameMatches: String, completionHandler: ((UsersResult) -> Void)?)
+    func getUsers(nicknameMatches nickname: String, completionHandler: ((UsersResult) -> Void)?)
+    
+    /// Nickname을 필터로 사용하여 해당 nickname을 가진 User 목록을 가져옵니다
+    /// GET API를 호출하고 캐시에 저장합니다
+    /// Get users API를 활용할 때 limit은 10으로 고정합니다
+    /// 첫번째 요청에서 받은 응답의 next 값을 token에 입력하면 다음 페이지를 가져옵니다
+    func getUsers(nicknameMatches nickname: String, token: String?, completionHandler: ((UsersNextResult) -> Void)?)
 }
