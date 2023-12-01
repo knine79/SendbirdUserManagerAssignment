@@ -53,15 +53,18 @@ public class SBUserManagerImpl: SBUserManager {
 
     public func initApplication(applicationId: String, apiToken: String) {
         
-        Log.debug("initApplication")
+        Log.verbose("\(#function) called")
+        
         if applicationId != self.applicationId || apiToken != self.apiToken {
             let networkClient = SBNetworkClientImpl()
             networkClient.applicationId = applicationId
             networkClient.apiToken = apiToken
             self._networkClient = networkClient
+            Log.verbose("\(#function) networkClient reset")
         }
         if applicationId != self.applicationId {
             self._userStorage = SBUserStorageImpl()
+            Log.verbose("\(#function) userStorage reset")
         }
         self.applicationId = applicationId
         self.apiToken = apiToken
@@ -106,7 +109,8 @@ public class SBUserManagerImpl: SBUserManager {
         
         var users: [SBUser] = []
         var errors: [String: Error] = [:]
-        params.enumerated().forEach { eachParams in
+        params.enumerated().forEach { [weak self] eachParams in
+            guard let self else { return }
             createUser(params: eachParams.element) { [weak self] in
                 switch $0 {
                 case .success(let user): 

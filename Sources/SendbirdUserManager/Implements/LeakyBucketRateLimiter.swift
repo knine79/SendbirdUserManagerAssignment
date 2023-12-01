@@ -28,8 +28,7 @@ final class LeakyBucketRateLimiter {
     }
 
     func add(_ job: @escaping () -> Void) -> Bool {
-        serialQueue.sync { [weak self] in
-            guard let self else { return false }
+        serialQueue.sync {
             if bucket.count >= bucketMaxSize {
                 return false
             } else {
@@ -40,8 +39,7 @@ final class LeakyBucketRateLimiter {
     }
 
     @objc func leak() {
-        serialQueue.sync { [weak self] in
-            guard let self else { return }
+        serialQueue.sync {
             for _ in 0..<rate {
                 if bucket.count > 0 {
                     let job = bucket.removeFirst()
