@@ -8,6 +8,8 @@
 import Foundation
 
 struct Log {
+    public static var logLevelToOuput: Level = .verbose
+    
     enum Level: String, Comparable {
         case error = "⛔️"
         case warning = "⚠️"
@@ -31,13 +33,11 @@ struct Log {
         }
     }
     
-    public static var logLevelToOuput: Level = .verbose
-    
     public static func print(_ level: Level, _ items: Any, file: String = #file, line: Int = #line) {
 #if DEBUG
         if level >= logLevelToOuput {
             let filename = String(file.split(separator: "/").last ?? "")
-            Swift.print("\(level.rawValue)\(Date().string("yyyy/MM/dd HH:mm:ss.SSS")) \(filename):\(line) ‣ \(items)")
+            Swift.print("\(level.rawValue) \(Date().string("yyyy/MM/dd HH:mm:ss.SSS")) \(filename):\(line) ‣ \(items)")
         }
 #endif
     }

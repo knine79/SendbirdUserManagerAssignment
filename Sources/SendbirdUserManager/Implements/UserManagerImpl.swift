@@ -7,6 +7,7 @@
 
 import Foundation
 
+// MARK: - error type
 public enum SBUserManagerError: Error {
     case creationLimitExceeded
     case creationFailedPartially([String: Error])
@@ -15,42 +16,43 @@ public enum SBUserManagerError: Error {
     case rateLimitExceeded
 }
 
+// MARK: - class definition
 public class SBUserManagerImpl: SBUserManager {
     
-    // MARK: private data
-    private let maxUserIdLength = 80
-    private let maxNicknameLength = 80
-    private let maxProfileURLLength = 2048
-    
+    // MARK: - private data
     private var applicationId: String?
     private var apiToken: String?
     private var rateLimiter: LeakyBucketRateLimiter
     private var _networkClient: SBNetworkClient
-
-    // public interfaces
-    public var networkClient: SBNetworkClient {
-        _networkClient
+    private var _userStorage: SBUserStorage
+    
+    private init(networkClient: SBNetworkClient, userStorage: SBUserStorage) {
+        self.rateLimiter = LeakyBucketRateLimiter(bucketSize: 10, rate: 1)
+        self._networkClient = networkClient
+        self._userStorage = userStorage
     }
-    public var userStorage: SBUserStorage
-
+    
+    // MARK: - public interfaces
     required public init() {
-        self._networkClient = SBUserManagerImpl.shared.networkClient
-        self.userStorage = SBUserManagerImpl.shared.userStorage
         self.applicationId = SBUserManagerImpl.shared.applicationId
         self.apiToken = SBUserManagerImpl.shared.apiToken
         self.rateLimiter = SBUserManagerImpl.shared.rateLimiter
+        self._networkClient = SBUserManagerImpl.shared.networkClient
+        self._userStorage = SBUserManagerImpl.shared.userStorage
+    }
+
+    public var networkClient: SBNetworkClient {
+        _networkClient
     }
     
-    private init(networkClient: SBNetworkClient, userStorage: SBUserStorage) {
-        self._networkClient = networkClient
-        self.userStorage = userStorage
-        self.rateLimiter = LeakyBucketRateLimiter(bucketSize: 10, rate: 1)
+    public var userStorage: SBUserStorage {
+        _userStorage
     }
     
     public static var shared: SBUserManagerImpl = SBUserManagerImpl(networkClient: SBNetworkClientImpl(), userStorage: SBUserStorageImpl())
 
-
     public func initApplication(applicationId: String, apiToken: String) {
+        
         Log.debug("initApplication")
         if applicationId != self.applicationId || apiToken != self.apiToken {
             let networkClient = SBNetworkClientImpl()
@@ -59,21 +61,10 @@ public class SBUserManagerImpl: SBUserManager {
             self._networkClient = networkClient
         }
         if applicationId != self.applicationId {
-            self.userStorage = SBUserStorageImpl()
+            self._userStorage = SBUserStorageImpl()
         }
         self.applicationId = applicationId
         self.apiToken = apiToken
-    }
-    
-    private func limitedRequest<R>(request: R, completionHandler: @escaping (Result<R.Response, Error>) -> Void) where R : Request {
-        
-        let isAllowed = rateLimiter.add { [weak self] in
-            guard let self else { return }
-            networkClient.request(request: request, completionHandler: completionHandler)
-        }
-        if !isAllowed {
-            completionHandler(.failure(SBUserManagerError.rateLimitExceeded))
-        }
     }
     
     public func createUser(params: UserCreationParams, completionHandler: ((UserResult) -> Void)?) {
@@ -195,13 +186,7 @@ public class SBUserManagerImpl: SBUserManager {
         }
     }
     
-    private struct UsersGetParams: Encodable {
-        let nickname: String
-        let limit: Int
-    }
-    
     public func getUsers(nicknameMatches nickname: String, completionHandler: ((UsersResult) -> Void)?) {
-        
         Log.verbose("\(#function) called")
         
         do {
@@ -212,7 +197,7 @@ public class SBUserManagerImpl: SBUserManager {
             return
         }
         
-        let request = GetUsersRequest(queryParams: UsersGetParams(nickname: nickname, limit: 10))
+        let request = GetUsersRequest(queryParams: ["nickname": nickname, "limit": "10"])
         limitedRequest(request: request) { [weak self] in
             switch $0 {
             case .success(let response):
@@ -229,8 +214,26 @@ public class SBUserManagerImpl: SBUserManager {
     }
 }
 
+// MARK: - rate limit
+extension SBUserManagerImpl {
+    private func limitedRequest<R>(request: R, completionHandler: @escaping (Result<R.Response, Error>) -> Void) where R : Request {
+        let isAllowed = rateLimiter.add { [weak self] in
+            guard let self else { return }
+            networkClient.request(request: request, completionHandler: completionHandler)
+        }
+        if !isAllowed {
+            completionHandler(.failure(SBUserManagerError.rateLimitExceeded))
+        }
+    }
+}
+
 // MARK: - parameter validation
 extension SBUserManagerImpl {
+    
+    private var maxUserIdLength: Int { 80 }
+    private var maxNicknameLength: Int { 80 }
+    private var maxProfileURLLength: Int { 2048 }
+    
     private func validateParams(_ params: UserCreationParams) throws {
         try validateUserId(params.userId, isCreating: true)
         try validateNickname(params.nickname, required: true)

@@ -80,7 +80,7 @@ final class MockNetworkClient: SBNetworkClient {
             completionHandler(.success(userDB[request.userId] as! R.Response))
             
         } else if let request = request as? GetUsersRequest,
-                  let nickname = try? request.queryParams?.toDictionary()?["nickname"] as? String {
+                  let nickname = request.queryParams["nickname"] {
             
             let filtered = userDB.values.filter {
                 $0.nickname?.replacingOccurrences(of: nickname, with: "") != $0.nickname

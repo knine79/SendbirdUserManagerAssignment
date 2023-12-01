@@ -7,7 +7,7 @@
 
 import Foundation
 
-
+// MARK: - error type
 public enum SBNetworkError: Error {
     case applicationNotInitialized
     case requestFailed
@@ -23,11 +23,14 @@ public struct SBApiError: Decodable {
     let message: String
 }
 
+// MARK: - class definition
 final class SBNetworkClientImpl: SBNetworkClient {
     
+    // MARK: - internal properties
     var applicationId: String?
     var apiToken: String?
     
+    // MARK: - public interface
     func request<R>(request: R, completionHandler: @escaping (Result<R.Response, Error>) -> Void) where R : Request {
         
         var printError: (Error) -> Void = {
@@ -39,7 +42,7 @@ final class SBNetworkClientImpl: SBNetworkClient {
                 throw SBNetworkError.applicationNotInitialized
             }
             
-            guard let urlRequest = try? (request as? RequestProperties)?.urlRequest(applicationId: applicationId, apiToken: apiToken) else {
+            guard let urlRequest = try? request.urlRequest(applicationId: applicationId, apiToken: apiToken) else {
                 throw SBNetworkError.requestFailed
             }
             
@@ -50,7 +53,10 @@ final class SBNetworkClientImpl: SBNetworkClient {
             Log.info("Request \(urlRequest.httpMethod ?? "") \(urlRequest.url?.absoluteString ?? "")")
             let task = URLSession.shared.dataTask(with: urlRequest) {
                 do {
-                    completionHandler(.success(try self.decodeData($0, $1, $2)))
+                    if let data = $0, let rawData = String(data: data, encoding: .utf8) {
+                        Log.verbose("Response \(rawData)")
+                    }
+                    completionHandler(.success(try self.decodeDataOrThrow($0, $1, $2)))
                 } catch {
                     printError(error)
                     completionHandler(.failure(error))
@@ -65,33 +71,9 @@ final class SBNetworkClientImpl: SBNetworkClient {
     }
 }
 
+// MARK: - private methods
 extension SBNetworkClientImpl {
-    private func dataTaskResult<T: Decodable>(_ data: Data?, _ response: URLResponse?, _ error: Error?) -> Result<T, Error> {
-        if let error = error {
-            return .failure(error)
-        }
-        
-        guard let response = response as? HTTPURLResponse else {
-            return .failure(SBNetworkError.unknown)
-        }
-        
-        guard let data = data else {
-            return .failure(SBNetworkError.emptyData)
-        }
-        
-        guard (200...299).contains(response.statusCode) else {
-            let apiError = try? JSONDecoder().decode(SBApiError.self, from: data)
-            return .failure(SBNetworkError.httpError(statusCode: response.statusCode, apiError: apiError))
-        }
-        
-        guard let decoded = try? JSONDecoder().decode(T.self, from: data) else {
-            return .failure(SBNetworkError.decodingFailed)
-        }
-        
-        return .success(decoded)
-    }
-    
-    private func decodeData<T: Decodable>(_ data: Data?, _ response: URLResponse?, _ error: Error?) throws -> T {
+    private func decodeDataOrThrow<T: Decodable>(_ data: Data?, _ response: URLResponse?, _ error: Error?) throws -> T {
         if let error = error {
             throw error
         }

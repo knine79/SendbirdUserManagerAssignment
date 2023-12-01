@@ -7,11 +7,13 @@
 
 import Foundation
 
+// MARK: - class definition
 final class SBUserStorageImpl: SBUserStorage {
-    var usersMap: [String: SBUser] = [:]
+    // MARK: - private data
+    private var usersMap: [String: SBUser] = [:]
+    private let serialQueue = DispatchQueue(label: "com.sendbird.user-manager.user-storage.serial-queue", qos: .default)
     
-    let serialQueue = DispatchQueue(label: "com.sendbird.user-manager.user-storage.serial-queue", qos: .default)
-    
+    // MARK: - public interfaces
     func upsertUser(_ user: SBUser) {
         serialQueue.sync {
             usersMap[user.userId] = user

@@ -7,13 +7,16 @@
 
 import Foundation
 
+// MARK: - class definition
 final class LeakyBucketRateLimiter {
+    // MARK: - private data
     private var bucket: [() -> Void] = []
     private let serialQueue = DispatchQueue(label: "com.sendbird.leaky-bucket.serial-queue", qos: .background)
     private let bucketMaxSize: Int
     private let rate: Int
     private var timer: Timer!
     
+    // MARK: - interfaces
     init(bucketSize: Int, rate: Int) {
         self.bucketMaxSize = bucketSize
         self.rate = rate

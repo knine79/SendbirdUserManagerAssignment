@@ -7,8 +7,17 @@
 
 import Foundation
 
+public enum RequestMethod: String {
+    case get, post, put
+}
+
 public protocol Request where Response: Decodable {
     associatedtype Response
+    
+    var method: RequestMethod { get }
+    var endpoint: String { get }
+    var queryParams: [String: String] { get }
+    var bodyParams: Encodable? { get }
 }
 
 public protocol SBNetworkClient {
