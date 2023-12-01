@@ -25,13 +25,16 @@ public class SBUserManagerImpl: SBUserManager {
     private var applicationId: String?
     private var apiToken: String?
     private var rateLimiter: LeakyBucketRateLimiter
+    private var _networkClient: SBNetworkClient
 
     // public interfaces
-    public var networkClient: SBNetworkClient
+    public var networkClient: SBNetworkClient {
+        _networkClient
+    }
     public var userStorage: SBUserStorage
 
     required public init() {
-        self.networkClient = SBUserManagerImpl.shared.networkClient
+        self._networkClient = SBUserManagerImpl.shared.networkClient
         self.userStorage = SBUserManagerImpl.shared.userStorage
         self.applicationId = SBUserManagerImpl.shared.applicationId
         self.apiToken = SBUserManagerImpl.shared.apiToken
@@ -39,7 +42,7 @@ public class SBUserManagerImpl: SBUserManager {
     }
     
     private init(networkClient: SBNetworkClient, userStorage: SBUserStorage) {
-        self.networkClient = networkClient
+        self._networkClient = networkClient
         self.userStorage = userStorage
         self.rateLimiter = LeakyBucketRateLimiter(bucketSize: 10, rate: 1)
     }
@@ -53,7 +56,7 @@ public class SBUserManagerImpl: SBUserManager {
             let networkClient = SBNetworkClientImpl()
             networkClient.applicationId = applicationId
             networkClient.apiToken = apiToken
-            self.networkClient = networkClient
+            self._networkClient = networkClient
         }
         if applicationId != self.applicationId {
             self.userStorage = SBUserStorageImpl()

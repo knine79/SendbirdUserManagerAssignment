@@ -279,11 +279,31 @@ open class UserManagerBaseTests: XCTestCase {
         // Concurrently get user info for 11 users
         let dispatchGroup = DispatchGroup()
         var results: [UserResult] = []
+        
+        userManager.initApplication(applicationId: "AppID1", apiToken: "Token1")
+        
+        let paramsArray = (0..<11).map { UserCreationParams(userId: "user\($0)", nickname: "user\($0)", profileURL: nil) }
 
-        for i in 0..<11 {
-            dispatchGroup.enter()
-            userManager.getUser(userId: "user\(i)") { result in
-                results.append(result)
+        dispatchGroup.enter()
+        userManager.createUsers(params: paramsArray.dropLast()) { result in
+            if case .success = result {
+                dispatchGroup.enter()
+                userManager.createUser(params: paramsArray.last!) { result in
+                    if case .success = result {
+                        userManager.initApplication(applicationId: "AppID2", apiToken: "Token2")
+                        
+                        userManager.initApplication(applicationId: "AppID1", apiToken: "Token1")
+                        
+                        for i in 0..<11 {
+                            dispatchGroup.enter()
+                            userManager.getUser(userId: "user\(i)") { result in
+                                results.append(result)
+                                dispatchGroup.leave()
+                            }
+                        }
+                        dispatchGroup.leave()
+                    }
+                }
                 dispatchGroup.leave()
             }
         }
@@ -372,20 +392,27 @@ open class UserManagerBaseTests: XCTestCase {
     public func testRateLimitUpdateUser() {
         let userManager = userManagerType().init()
         
+        let createParams = UserCreationParams(userId: "user", nickname: "NewNick", profileURL: nil)
         let updateParams = UserUpdateParams(userId: "user", nickname: "NewNick", profileURL: nil)
 
         // Concurrently update 11 users
         let dispatchGroup = DispatchGroup()
         var results: [UserResult] = []
 
-        for _ in 0..<11 {
-            dispatchGroup.enter()
-            userManager.updateUser(params: updateParams) { result in
-                results.append(result)
+        dispatchGroup.enter()
+        userManager.createUser(params: createParams) { result in
+            if case .success = result {
+                for _ in 0..<11 {
+                    dispatchGroup.enter()
+                    userManager.updateUser(params: updateParams) { result in
+                        results.append(result)
+                        dispatchGroup.leave()
+                    }
+                }
                 dispatchGroup.leave()
             }
         }
-
+                
         dispatchGroup.wait()
 
         // Assess the results

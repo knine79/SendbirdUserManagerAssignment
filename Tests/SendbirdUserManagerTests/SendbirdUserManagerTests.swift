@@ -31,12 +31,15 @@ typealias MockUserStorage = SBUserStorageImpl
 final class MockUserManager: SBUserManagerImpl {
     required init() {
         super.init()
-        self.networkClient = MockNetworkClient()
+    }
+    
+    private let _networkClient = MockNetworkClient()
+    override var networkClient: SBNetworkClient {
+        _networkClient
     }
     
     override func initApplication(applicationId: String, apiToken: String) {
         super.initApplication(applicationId: applicationId, apiToken: apiToken)
-        self.networkClient = MockNetworkClient()
     }
 }
 
