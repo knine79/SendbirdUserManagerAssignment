@@ -296,9 +296,5 @@ extension SBUserManagerImpl {
         guard profileURL?.count ?? 0 <= maxProfileURLLength else {
             throw SBUserManagerError.invalidParameters("profileURL is too long")
         }
-        
-        guard profileURL == nil || URL(string: profileURL!) != nil else {
-            throw SBUserManagerError.invalidParameters("profileURL is invalid url")
-        }
     }
 }
