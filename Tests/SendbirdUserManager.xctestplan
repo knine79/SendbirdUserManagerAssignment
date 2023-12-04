@@ -1,0 +1,28 @@
+{
+  "configurations" : [
+    {
+      "id" : "C8F8814B-1548-4F47-A383-595A81F50F6A",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+
+  },
+  "testTargets" : [
+    {
+      "skippedTests" : [
+        "UserManagerBaseTests",
+        "UserStorageBaseTests"
+      ],
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "SendbirdUserManagerTests",
+        "name" : "SendbirdUserManagerTests"
+      }
+    }
+  ],
+  "version" : 1
+}
